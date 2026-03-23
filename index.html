@@ -272,6 +272,29 @@
       text-decoration: none;
     }
 
+    .game-option {
+      min-height: 210px;
+      display: grid;
+      align-content: space-between;
+      gap: 16px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(236, 230, 219, 0.9)),
+        var(--panel);
+      border: 1px solid rgba(24, 34, 45, 0.16);
+    }
+
+    .game-tag {
+      width: fit-content;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border: 1px solid rgba(24, 34, 45, 0.16);
+      background: rgba(255, 255, 255, 0.58);
+    }
+
     .link-card h2,
     .section h2 {
       margin: 0 0 12px;
@@ -374,9 +397,8 @@
           <p class="eyebrow">Simple. Clean. Sophisticated.</p>
           <h1>Ryan's World</h1>
           <p class="lead">
-            This homepage keeps the layout calm and polished while still surfacing a few clear
-            destinations. Both arcade projects live on their own pages, with direct links from the
-            main hero section.
+            Pick a game and jump in. The homepage now highlights two clear options up front:
+            Flappy Bird and Driving Game.
           </p>
           <div class="actions">
             <a class="button button-primary" href="flappybird.html">Play Flappy Bird</a>
@@ -395,28 +417,22 @@
             </div>
           </div>
           <p class="panel-copy">
-            The arcade section now includes both a flying game and a simple driving challenge.
+            Scroll one section down for the dedicated two-card game selector.
           </p>
           <a class="button button-secondary" href="#projects">Browse Projects</a>
         </aside>
       </section>
 
       <section class="sections" id="projects">
-        <a class="link-card" href="flappybird.html">
+        <a class="link-card game-option" href="flappybird.html">
+          <span class="game-tag">Game Option 1</span>
           <h2>Flappy Bird</h2>
           <p>A standalone browser game with keyboard, mouse, and touch controls.</p>
         </a>
-        <a class="link-card" href="driving.html">
+        <a class="link-card game-option" href="driving.html">
+          <span class="game-tag">Game Option 2</span>
           <h2>Driving Game</h2>
-          <p>A simple lane-dodging racer built for quick arcade runs in the browser.</p>
-        </a>
-        <a class="link-card" href="#notes">
-          <h2>Notes</h2>
-          <p>Short writing, experiments, and small ideas collected in one place.</p>
-        </a>
-        <a class="link-card" href="#contact">
-          <h2>Contact</h2>
-          <p>A clean section for links, next steps, or a short introduction.</p>
+          <p>First-person city driving with a garage, car upgrades, and camera switching.</p>
         </a>
       </section>
 
