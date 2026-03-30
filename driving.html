@@ -33,6 +33,8 @@ canvas{display:block}
 #start-btn:hover{background:#6ab5ff}
 
 #controls-hint{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:20;color:rgba(255,255,255,0.35);font-size:0.72rem;letter-spacing:1px;pointer-events:none}
+#crash-alert{position:fixed;top:22%;left:50%;transform:translateX(-50%);z-index:26;color:#ffd2d2;font-size:2rem;font-weight:800;letter-spacing:2px;text-shadow:0 0 18px rgba(255,95,95,0.7);opacity:0;transition:opacity .14s;pointer-events:none}
+#crash-flash{position:fixed;inset:0;z-index:25;background:radial-gradient(circle at center,rgba(255,92,92,0.22) 0%,rgba(180,20,20,0.42) 100%);opacity:0;pointer-events:none;transition:opacity .08s}
 
 #garage-modal{position:fixed;inset:0;z-index:40;background:rgba(6,10,16,0.72);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;padding:20px}
 #garage-modal.show{display:flex}
@@ -66,6 +68,9 @@ canvas{display:block}
   </div>
   <div id="hud-controls">
     <button id="camera-toggle-btn" class="hud-btn" type="button">View: 1st Person</button>
+    <button id="front-view-btn" class="hud-btn" type="button">Front View</button>
+    <button id="transform-btn" class="hud-btn" type="button">Transform: N/A</button>
+    <button id="flight-btn" class="hud-btn" type="button">Flight: N/A</button>
     <button id="garage-btn" class="hud-btn" type="button">Garage</button>
   </div>
   <div id="speedo">
@@ -97,7 +102,9 @@ canvas{display:block}
   </div>
 </div>
 
-<div id="controls-hint">WASD OR ARROW KEYS | C TOGGLE VIEW | G GARAGE</div>
+<div id="controls-hint">WASD OR ARROW KEYS | R TRANSFORM | F FLIGHT | SPACE UP | SHIFT DOWN | C VIEW | G GARAGE</div>
+<div id="crash-flash"></div>
+<div id="crash-alert">CRASH!</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -172,6 +179,13 @@ const ROAD_CENTERS=[-1000,-800,-600,-400,-200,0,200,400,600,800,1000];
 const ROAD_W=40;
 const SWALK_W=5;
 const WORLD_LEN=2200;
+const WORLD_EDGE=980;
+
+const crashColliders=[];
+const CAR_COLLISION_RADIUS=1.15;
+let crashCooldown=0;
+let crashFlash=0;
+let crashAlertTime=0;
 
 (function buildRoads(){
   const roadMat=new THREE.MeshLambertMaterial({color:0x333740});
@@ -252,6 +266,7 @@ const GLASS_COLORS=[0x2A4A6A,0x1A3A5A,0x3A5A7A,0x4A6A8A,0x2A3A5A];
 function createHouse(rand){
   const g=new THREE.Group();
   const w=8+rand()*6,d=8+rand()*5,h=4+rand()*4;
+  g.userData.collisionRadius=Math.max(w,d)*0.56;
   const bm=new THREE.MeshLambertMaterial({color:HOUSE_COLORS[Math.floor(rand()*HOUSE_COLORS.length)]});
   const rm=new THREE.MeshLambertMaterial({color:ROOF_COLORS[Math.floor(rand()*ROOF_COLORS.length)]});
   const wm=new THREE.MeshLambertMaterial({color:0x7BA7BC});
@@ -282,6 +297,7 @@ function createHouse(rand){
 function createCommercial(rand){
   const g=new THREE.Group();
   const w=14+rand()*8,d=10+rand()*6,h=6+rand()*6;
+  g.userData.collisionRadius=Math.max(w,d)*0.62;
   const bm=new THREE.MeshLambertMaterial({color:COMM_COLORS[Math.floor(rand()*COMM_COLORS.length)]});
   const gm=new THREE.MeshLambertMaterial({color:0x4A7090,transparent:true,opacity:0.75});
   const am=new THREE.MeshLambertMaterial({color:0x8B2020});
@@ -310,6 +326,7 @@ function createCommercial(rand){
 function createOffice(rand){
   const g=new THREE.Group();
   const w=16+rand()*8,d=12+rand()*6,h=20+rand()*25;
+  g.userData.collisionRadius=Math.max(w,d)*0.62;
   const bm=new THREE.MeshLambertMaterial({color:OFF_COLORS[Math.floor(rand()*OFF_COLORS.length)]});
   const gm=new THREE.MeshLambertMaterial({color:GLASS_COLORS[Math.floor(rand()*GLASS_COLORS.length)],transparent:true,opacity:0.82});
 
@@ -356,6 +373,7 @@ function createOffice(rand){
         building.position.set(bx,0,bz);
         building.rotation.y=Math.round(rand()*4)*(Math.PI/2);
         scene.add(building);
+        addCrashCollider(bx,bz,building.userData.collisionRadius||8);
       }
     }
   }
@@ -383,6 +401,7 @@ function createOffice(rand){
     g.scale.set(s,s,s);
     g.position.set(tx,0,tz);
     scene.add(g);
+    addCrashCollider(tx,tz,1.15*s);
   }
 })();
 
@@ -514,7 +533,7 @@ const STORAGE_KEYS={
 const CAR_CATALOG=[
   {id:"starter",name:"Starter",price:0,color:0x7aa8ff,stats:{MAX_SPEED:62,ACCEL:30,REVERSE_MAX:26,REVERSE_ACCEL:22,BRAKE:44,DRAG:4.4,STEER_RATE:1.6}},
   {id:"street",name:"Street",price:900,color:0x66d1a8,stats:{MAX_SPEED:70,ACCEL:34,REVERSE_MAX:28,REVERSE_ACCEL:24,BRAKE:46,DRAG:4.2,STEER_RATE:1.7}},
-  {id:"sport",name:"Sport",price:2200,color:0xff9e57,stats:{MAX_SPEED:82,ACCEL:40,REVERSE_MAX:32,REVERSE_ACCEL:27,BRAKE:48,DRAG:4.0,STEER_RATE:1.8}},
+  {id:"sport",name:"Sport",price:2200,color:0xe21d1d,stats:{MAX_SPEED:82,ACCEL:40,REVERSE_MAX:32,REVERSE_ACCEL:27,BRAKE:48,DRAG:4.0,STEER_RATE:1.8}},
   {id:"muscle",name:"Muscle",price:4800,color:0xd66bff,stats:{MAX_SPEED:92,ACCEL:46,REVERSE_MAX:34,REVERSE_ACCEL:30,BRAKE:50,DRAG:3.8,STEER_RATE:1.75}},
   {id:"super",name:"Super",price:9000,color:0xff5d73,stats:{MAX_SPEED:104,ACCEL:52,REVERSE_MAX:38,REVERSE_ACCEL:34,BRAKE:52,DRAG:3.6,STEER_RATE:1.9}},
   {id:"hyper",name:"Hyper",price:15000,color:0xffd44f,stats:{MAX_SPEED:118,ACCEL:60,REVERSE_MAX:42,REVERSE_ACCEL:38,BRAKE:54,DRAG:3.4,STEER_RATE:2.0}}
@@ -540,7 +559,7 @@ const car={
   STEER_RATE:1.6
 };
 
-const keys={forward:false,back:false,left:false,right:false};
+const keys={forward:false,back:false,left:false,right:false,ascend:false,descend:false};
 let gameStarted=false;
 let isGarageOpen=false;
 let cameraMode="first";
@@ -553,11 +572,62 @@ let playerCarGroup;
 let playerBodyMat;
 let playerFrontPivots=[];
 let playerWheelMeshes=[];
+let sportRobotRig=null;
+let sportRobotTarget=0;
+let sportRobotProgress=0;
+let muscleRobotRig=null;
+let muscleRobotTarget=0;
+let muscleRobotProgress=0;
+let superRobotRig=null;
+let superRobotTarget=0;
+let superRobotProgress=0;
+let robotFlightEnabled=false;
+let robotVerticalSpeed=0;
+const ROBOT_FLIGHT_MAX_ALT=140;
+const ROBOT_FLIGHT_LIFT_SPEED=32;
 const chaseCamPos=new THREE.Vector3();
 const chaseLook=new THREE.Vector3();
+const frontCamPos=new THREE.Vector3();
+const frontLook=new THREE.Vector3();
 
 function lerp(a,b,t){return a+(b-a)*t;}
 function clamp(v,mn,mx){return Math.max(mn,Math.min(mx,v));}
+
+function addCrashCollider(x,z,radius){
+  crashColliders.push({x,z,radius});
+}
+
+function findCrashColliderAt(x,z){
+  for(const collider of crashColliders){
+    const dx=x-collider.x;
+    const dz=z-collider.z;
+    const hitDist=CAR_COLLISION_RADIUS+collider.radius;
+    if(dx*dx+dz*dz<=hitDist*hitDist){
+      return collider;
+    }
+  }
+  return null;
+}
+
+function triggerCrash(prevX,prevZ){
+  if(crashCooldown>0) return;
+  car.position.x=prevX;
+  car.position.z=prevZ;
+  car.speed*=-0.32;
+  if(Math.abs(car.speed)<1.2) car.speed=0;
+  car.accelInput=0;
+  crashCooldown=0.28;
+  crashFlash=1;
+  crashAlertTime=0.8;
+}
+
+function updateCrashEffects(dt){
+  if(crashCooldown>0) crashCooldown=Math.max(0,crashCooldown-dt);
+  if(crashFlash>0) crashFlash=Math.max(0,crashFlash-dt*3.5);
+  if(crashAlertTime>0) crashAlertTime=Math.max(0,crashAlertTime-dt);
+  document.getElementById("crash-flash").style.opacity=(crashFlash*0.42).toFixed(3);
+  document.getElementById("crash-alert").style.opacity=crashAlertTime>0?"1":"0";
+}
 
 function safeParseJSON(raw,fallback){
   if(!raw) return fallback;
@@ -598,9 +668,83 @@ function applySelectedCarStats(){
   car.BRAKE=stats.BRAKE;
   car.DRAG=stats.DRAG;
   car.STEER_RATE=stats.STEER_RATE;
-  if(playerBodyMat){
-    playerBodyMat.color.setHex(getSelectedCarDef().color);
+  buildPlayerCar();
+  updateTransformButton();
+  updateFlightButton();
+}
+
+function updateTransformButton(){
+  const btn=document.getElementById("transform-btn");
+  if(!btn) return;
+  const modelId=getSelectedCarDef().id;
+  const canTransform=modelId==="sport"||modelId==="muscle"||modelId==="super";
+  btn.disabled=!canTransform;
+  btn.style.opacity=canTransform?"1":"0.45";
+  if(!canTransform){
+    btn.textContent="Transform: N/A";
+    return;
   }
+  const target=
+    modelId==="sport"?sportRobotTarget:
+    modelId==="muscle"?muscleRobotTarget:
+    superRobotTarget;
+  btn.textContent=target>0.5?"Transform: Robot":"Transform: Car";
+}
+
+function getActiveRobotModelId(){
+  if(getSelectedCarDef().id==="sport" && sportRobotProgress>0.55) return "sport";
+  if(getSelectedCarDef().id==="muscle" && muscleRobotProgress>0.55) return "muscle";
+  if(getSelectedCarDef().id==="super" && superRobotProgress>0.55) return "super";
+  return "";
+}
+
+function updateFlightButton(){
+  const btn=document.getElementById("flight-btn");
+  if(!btn) return;
+  const modelId=getSelectedCarDef().id;
+  const canEverFly=modelId==="sport"||modelId==="muscle"||modelId==="super";
+  const isRobotActive=!!getActiveRobotModelId();
+  const canFlyNow=canEverFly && isRobotActive;
+  btn.disabled=!canFlyNow;
+  btn.style.opacity=canFlyNow?"1":"0.45";
+  if(!canEverFly){
+    btn.textContent="Flight: N/A";
+    return;
+  }
+  if(!isRobotActive){
+    btn.textContent="Flight: Robot Only";
+    return;
+  }
+  btn.textContent=robotFlightEnabled?"Flight: On":"Flight: Off";
+}
+
+function toggleRobotTransform(){
+  const modelId=getSelectedCarDef().id;
+  if(modelId==="sport"){
+    if(!sportRobotRig) return;
+    sportRobotTarget=sportRobotTarget>0.5?0:1;
+  }else if(modelId==="muscle"){
+    if(!muscleRobotRig) return;
+    muscleRobotTarget=muscleRobotTarget>0.5?0:1;
+  }else if(modelId==="super"){
+    if(!superRobotRig) return;
+    superRobotTarget=superRobotTarget>0.5?0:1;
+  }else{
+    return;
+  }
+  robotFlightEnabled=false;
+  robotVerticalSpeed=0;
+  updateTransformButton();
+  updateFlightButton();
+}
+
+function toggleRobotFlight(){
+  if(!getActiveRobotModelId()) return;
+  robotFlightEnabled=!robotFlightEnabled;
+  if(!robotFlightEnabled){
+    robotVerticalSpeed=0;
+  }
+  updateFlightButton();
 }
 
 function clearDriveKeys(){
@@ -608,6 +752,8 @@ function clearDriveKeys(){
   keys.back=false;
   keys.left=false;
   keys.right=false;
+  keys.ascend=false;
+  keys.descend=false;
   car.accelInput=0;
   car.steerInput=0;
 }
@@ -620,85 +766,498 @@ function startGame(){
 }
 
 function buildPlayerCar(){
+  if(playerCarGroup){
+    scene.remove(playerCarGroup);
+  }
+  playerFrontPivots=[];
+  playerWheelMeshes=[];
+  sportRobotRig=null;
+  sportRobotTarget=0;
+  sportRobotProgress=0;
+  muscleRobotRig=null;
+  muscleRobotTarget=0;
+  muscleRobotProgress=0;
+  superRobotRig=null;
+  superRobotTarget=0;
+  superRobotProgress=0;
+  robotFlightEnabled=false;
+  robotVerticalSpeed=0;
+
+  const selected=getSelectedCarDef();
+  const modelId=selected.id;
   const group=new THREE.Group();
-  const bodyMat=new THREE.MeshLambertMaterial({color:getSelectedCarDef().color});
+  const bodyMat=new THREE.MeshLambertMaterial({color:selected.color});
   const darkMat=new THREE.MeshLambertMaterial({color:0x1d2229});
   const glassMat=new THREE.MeshLambertMaterial({color:0x95c3df,transparent:true,opacity:0.55});
   const lightMat=new THREE.MeshLambertMaterial({color:0xffec95});
   const tailMat=new THREE.MeshLambertMaterial({color:0xff6b62});
+  const trimMat=new THREE.MeshLambertMaterial({color:0x2a313b});
   const wheelMat=new THREE.MeshLambertMaterial({color:0x0b0b0f});
 
-  const base=new THREE.Mesh(new THREE.BoxGeometry(1.9,0.45,3.7),bodyMat);
-  base.position.y=0.55;
-  base.castShadow=true;base.receiveShadow=true;
-  group.add(base);
+  function addPart(geometry,material,x,y,z,rx=0,ry=0,rz=0,castShadow=true,parent=null){
+    const mesh=new THREE.Mesh(geometry,material);
+    mesh.position.set(x,y,z);
+    mesh.rotation.set(rx,ry,rz);
+    mesh.castShadow=castShadow;
+    mesh.receiveShadow=true;
+    (parent||group).add(mesh);
+    return mesh;
+  }
 
-  const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.5,0.48,1.8),darkMat);
-  cabin.position.set(0,1.02,0.1);
-  cabin.castShadow=true;
-  group.add(cabin);
+  function addScaledPart(geometry,material,x,y,z,sx,sy,sz,rx=0,ry=0,rz=0,castShadow=true,parent=null){
+    const mesh=addPart(geometry,material,x,y,z,rx,ry,rz,castShadow,parent);
+    mesh.scale.set(sx,sy,sz);
+    return mesh;
+  }
 
-  const glass=new THREE.Mesh(new THREE.BoxGeometry(1.38,0.36,1.55),glassMat);
-  glass.position.set(0,1.03,0.15);
-  group.add(glass);
+  function addLights(frontY,frontZ,rearY,rearZ,spread,frontW=0.22,frontH=0.1,rearW=0.22,rearH=0.1){
+    addPart(new THREE.BoxGeometry(frontW,frontH,0.1),lightMat,-spread,frontY,frontZ,0,0,0,false);
+    addPart(new THREE.BoxGeometry(frontW,frontH,0.1),lightMat,spread,frontY,frontZ,0,0,0,false);
+    addPart(new THREE.BoxGeometry(rearW,rearH,0.1),tailMat,-spread,rearY,rearZ,0,0,0,false);
+    addPart(new THREE.BoxGeometry(rearW,rearH,0.1),tailMat,spread,rearY,rearZ,0,0,0,false);
+  }
 
-  const hoodDetail=new THREE.Mesh(new THREE.BoxGeometry(1.3,0.08,0.82),darkMat);
-  hoodDetail.position.set(0,0.78,1.32);
-  group.add(hoodDetail);
+  function addWheelSet(radius,width,wheelPositions,segments=18){
+    const wheelGeo=new THREE.CylinderGeometry(radius,radius,width,segments);
+    const pivots=[];
+    for(const [x,y,z,isFront] of wheelPositions){
+      const pivot=new THREE.Group();
+      pivot.position.set(x,y,z);
+      const wheel=new THREE.Mesh(wheelGeo,wheelMat);
+      wheel.rotation.z=Math.PI/2;
+      wheel.castShadow=true;
+      wheel.receiveShadow=true;
+      pivot.add(wheel);
+      group.add(pivot);
+      pivots.push(pivot);
+      if(isFront) playerFrontPivots.push(pivot);
+      playerWheelMeshes.push(wheel);
+    }
+    return pivots;
+  }
 
-  const frontLeft=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.1,0.1),lightMat);
-  frontLeft.position.set(-0.55,0.68,1.86);
-  const frontRight=frontLeft.clone();
-  frontRight.position.x=0.55;
-  group.add(frontLeft,frontRight);
+  if(modelId==="starter"){
+    addPart(new THREE.BoxGeometry(1.9,0.45,3.7),bodyMat,0,0.55,0);
+    addPart(new THREE.BoxGeometry(1.5,0.48,1.8),darkMat,0,1.02,0.1);
+    addPart(new THREE.BoxGeometry(1.38,0.36,1.55),glassMat,0,1.03,0.15,0,0,0,false);
+    addPart(new THREE.BoxGeometry(1.3,0.08,0.82),darkMat,0,0.78,1.32);
+    addLights(0.68,1.86,0.68,-1.86,0.55);
+    addWheelSet(0.36,0.32,[
+      [-0.92,0.36,1.2,true],
+      [0.92,0.36,1.2,true],
+      [-0.92,0.36,-1.2,false],
+      [0.92,0.36,-1.2,false]
+    ]);
+  }else if(modelId==="street"){
+    addPart(new THREE.BoxGeometry(1.96,0.46,3.85),bodyMat,0,0.56,0);
+    addPart(new THREE.BoxGeometry(1.55,0.5,1.95),trimMat,0,1.03,0.04);
+    addPart(new THREE.BoxGeometry(1.42,0.34,1.65),glassMat,0,1.03,0.11,0,0,0,false);
+    addPart(new THREE.BoxGeometry(1.28,0.1,0.95),darkMat,0,0.8,1.36);
+    addPart(new THREE.BoxGeometry(1.0,0.06,0.34),bodyMat,0,0.92,-2.02);
+    addPart(new THREE.BoxGeometry(0.12,0.1,2.95),trimMat,-0.96,0.45,-0.02);
+    addPart(new THREE.BoxGeometry(0.12,0.1,2.95),trimMat,0.96,0.45,-0.02);
+    addLights(0.7,1.94,0.7,-1.94,0.58,0.24,0.1,0.24,0.1);
+    addWheelSet(0.38,0.34,[
+      [-0.96,0.38,1.28,true],
+      [0.96,0.38,1.28,true],
+      [-0.96,0.38,-1.28,false],
+      [0.96,0.38,-1.28,false]
+    ]);
+  }else if(modelId==="sport"){
+    const sportBodyMat=new THREE.MeshPhongMaterial({color:selected.color,shininess:95,specular:0x505050});
+    const sportDarkMat=new THREE.MeshPhongMaterial({color:0x13161b,shininess:35,specular:0x222222});
+    const sportGlassMat=new THREE.MeshPhongMaterial({color:0x1c222b,transparent:true,opacity:0.64,shininess:80,specular:0x777777});
+    const shellGroup=new THREE.Group();
+    group.add(shellGroup);
+    const robotGroup=new THREE.Group();
+    robotGroup.visible=false;
+    robotGroup.scale.setScalar(0.001);
+    group.add(robotGroup);
 
-  const rearLeft=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.1,0.1),tailMat);
-  rearLeft.position.set(-0.55,0.68,-1.86);
-  const rearRight=rearLeft.clone();
-  rearRight.position.x=0.55;
-  group.add(rearLeft,rearRight);
+    addPart(new THREE.BoxGeometry(2.0,0.28,4.22),sportBodyMat,0,0.47,0.02,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.62,0.14,1.44),sportBodyMat,0,0.63,1.2,-0.08,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.44,0.17,0.76),sportBodyMat,0,0.61,2.04,-0.18,0,0,true,shellGroup);
+    addPart(new THREE.CylinderGeometry(0.5,0.44,1.82,30,1,false),sportBodyMat,0,0.87,0.1,Math.PI/2,0,0,true,shellGroup);
+    addPart(new THREE.CylinderGeometry(0.41,0.34,1.56,26,1,false),sportGlassMat,0,0.93,0.12,Math.PI/2,0,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(1.24,0.12,0.92),sportBodyMat,0,0.78,-1.58,0.05,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.12,0.06,0.22),sportBodyMat,0,0.94,-2.1,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(2.02,0.09,0.48),sportDarkMat,0,0.37,2.14,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.95,0.08,0.34),sportDarkMat,0,0.39,-2.17,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.14,0.12,3.14),sportDarkMat,-0.94,0.41,-0.02,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.14,0.12,3.14),sportDarkMat,0.94,0.41,-0.02,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.66,0.09,0.42),sportDarkMat,-0.52,0.57,2.01,0,0.2,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.66,0.09,0.42),sportDarkMat,0.52,0.57,2.01,0,-0.2,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.24,0.08,1.42),sportDarkMat,-0.79,0.56,-0.28,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.24,0.08,1.42),sportDarkMat,0.79,0.56,-0.28,0,0,0,true,shellGroup);
+    addScaledPart(new THREE.SphereGeometry(0.36,28,18),sportBodyMat,-0.93,0.54,1.34,1.0,0.65,0.9,0,0,0,true,shellGroup);
+    addScaledPart(new THREE.SphereGeometry(0.36,28,18),sportBodyMat,0.93,0.54,1.34,1.0,0.65,0.9,0,0,0,true,shellGroup);
+    addScaledPart(new THREE.SphereGeometry(0.34,28,18),sportBodyMat,-0.93,0.56,-1.36,1.0,0.64,0.88,0,0,0,true,shellGroup);
+    addScaledPart(new THREE.SphereGeometry(0.34,28,18),sportBodyMat,0.93,0.56,-1.36,1.0,0.64,0.88,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.34,0.06,0.2),lightMat,-0.58,0.68,2.07,0,-0.28,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.34,0.06,0.2),lightMat,0.58,0.68,2.07,0,0.28,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.28,0.06,0.14),tailMat,-0.63,0.67,-2.11,0,0.12,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.28,0.06,0.14),tailMat,0.63,0.67,-2.11,0,-0.12,0,false,shellGroup);
+    const sportWheelPivots=addWheelSet(0.39,0.34,[
+      [-0.98,0.39,1.45,true],
+      [0.98,0.39,1.45,true],
+      [-0.98,0.39,-1.43,false],
+      [0.98,0.39,-1.43,false]
+    ],30);
 
-  const wheelGeo=new THREE.CylinderGeometry(0.36,0.36,0.32,16);
-  const wheelPositions=[
-    [-0.92,0.36,1.2,true],
-    [0.92,0.36,1.2,true],
-    [-0.92,0.36,-1.2,false],
-    [0.92,0.36,-1.2,false]
-  ];
-  for(const [x,y,z,isFront] of wheelPositions){
-    const pivot=new THREE.Group();
-    pivot.position.set(x,y,z);
-    const wheel=new THREE.Mesh(wheelGeo,wheelMat);
-    wheel.rotation.z=Math.PI/2;
-    wheel.castShadow=true;
-    pivot.add(wheel);
-    group.add(pivot);
-    if(isFront) playerFrontPivots.push(pivot);
-    playerWheelMeshes.push(wheel);
+    const robotPrimary=new THREE.MeshLambertMaterial({color:selected.color});
+    const robotDark=new THREE.MeshLambertMaterial({color:0x1d2229});
+    const robotAccent=new THREE.MeshLambertMaterial({color:0x87d6ff});
+
+    const torso=addPart(new THREE.BoxGeometry(1.05,1.2,0.7),robotPrimary,0,1.58,0.1,0,0,0,true,robotGroup);
+    addPart(new THREE.BoxGeometry(0.82,0.34,0.18),robotAccent,0,1.82,0.48,0,0,0,false,robotGroup);
+    const head=addPart(new THREE.BoxGeometry(0.46,0.42,0.44),robotDark,0,2.42,0.16,0,0,0,true,robotGroup);
+    addPart(new THREE.BoxGeometry(0.26,0.08,0.08),robotAccent,0,2.44,0.4,0,0,0,false,robotGroup);
+    addPart(new THREE.BoxGeometry(0.74,0.28,0.54),robotDark,0,1.0,0.05,0,0,0,true,robotGroup);
+
+    const leftArm=new THREE.Group();
+    leftArm.position.set(-0.78,1.96,0.08);
+    robotGroup.add(leftArm);
+    addPart(new THREE.BoxGeometry(0.32,0.86,0.32),robotPrimary,0,-0.45,0,0,0,0,true,leftArm);
+    addPart(new THREE.BoxGeometry(0.26,0.8,0.26),robotDark,0,-1.15,0,0,0,0,true,leftArm);
+
+    const rightArm=new THREE.Group();
+    rightArm.position.set(0.78,1.96,0.08);
+    robotGroup.add(rightArm);
+    addPart(new THREE.BoxGeometry(0.32,0.86,0.32),robotPrimary,0,-0.45,0,0,0,0,true,rightArm);
+    addPart(new THREE.BoxGeometry(0.26,0.8,0.26),robotDark,0,-1.15,0,0,0,0,true,rightArm);
+
+    const leftLeg=new THREE.Group();
+    leftLeg.position.set(-0.3,1.04,0.05);
+    robotGroup.add(leftLeg);
+    addPart(new THREE.BoxGeometry(0.34,0.92,0.34),robotPrimary,0,-0.46,0,0,0,0,true,leftLeg);
+    addPart(new THREE.BoxGeometry(0.3,0.92,0.3),robotDark,0,-1.24,0,0,0,0,true,leftLeg);
+
+    const rightLeg=new THREE.Group();
+    rightLeg.position.set(0.3,1.04,0.05);
+    robotGroup.add(rightLeg);
+    addPart(new THREE.BoxGeometry(0.34,0.92,0.34),robotPrimary,0,-0.46,0,0,0,0,true,rightLeg);
+    addPart(new THREE.BoxGeometry(0.3,0.92,0.3),robotDark,0,-1.24,0,0,0,0,true,rightLeg);
+
+    const leftWing=new THREE.Group();
+    leftWing.position.set(-0.5,1.9,-0.16);
+    robotGroup.add(leftWing);
+    addPart(new THREE.BoxGeometry(0.42,0.05,0.24),robotDark,-0.2,0,0,0,0,0,true,leftWing);
+    addPart(new THREE.BoxGeometry(0.28,0.04,0.18),robotAccent,-0.53,0.01,0,0,0,0,false,leftWing);
+    addPart(new THREE.BoxGeometry(0.2,0.03,0.12),robotAccent,-0.76,0.01,0,0,0,0,false,leftWing);
+
+    const rightWing=new THREE.Group();
+    rightWing.position.set(0.5,1.9,-0.16);
+    robotGroup.add(rightWing);
+    addPart(new THREE.BoxGeometry(0.42,0.05,0.24),robotDark,0.2,0,0,0,0,0,true,rightWing);
+    addPart(new THREE.BoxGeometry(0.28,0.04,0.18),robotAccent,0.53,0.01,0,0,0,0,false,rightWing);
+    addPart(new THREE.BoxGeometry(0.2,0.03,0.12),robotAccent,0.76,0.01,0,0,0,0,false,rightWing);
+
+    sportRobotRig={
+      shellGroup,
+      robotGroup,
+      torso,
+      head,
+      leftArm,
+      rightArm,
+      leftLeg,
+      rightLeg,
+      leftWing,
+      rightWing,
+      sportWheelPivots,
+      wheelCarPos:[
+        new THREE.Vector3(-0.98,0.39,1.45),
+        new THREE.Vector3(0.98,0.39,1.45),
+        new THREE.Vector3(-0.98,0.39,-1.43),
+        new THREE.Vector3(0.98,0.39,-1.43)
+      ],
+      wheelRobotPos:[
+        new THREE.Vector3(-0.86,1.92,0.22),
+        new THREE.Vector3(0.86,1.92,0.22),
+        new THREE.Vector3(-0.36,0.64,-0.15),
+        new THREE.Vector3(0.36,0.64,-0.15)
+      ]
+    };
+  }else if(modelId==="muscle"){
+    const shellGroup=new THREE.Group();
+    group.add(shellGroup);
+    const robotGroup=new THREE.Group();
+    robotGroup.visible=false;
+    robotGroup.scale.setScalar(0.001);
+    group.add(robotGroup);
+
+    addPart(new THREE.BoxGeometry(2.08,0.5,4.3),bodyMat,0,0.58,0,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.72,0.16,1.58),bodyMat,0,0.85,1.02,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.54,0.12,0.76),darkMat,0,0.97,1.13,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.62,0.46,1.78),trimMat,0,1.03,-0.12,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.44,0.3,1.5),glassMat,0,1.04,-0.08,0,0,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(1.7,0.14,0.84),bodyMat,0,0.8,-1.65,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.22,0.2,0.1),darkMat,0,0.7,2.18,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.24,0.1,0.1),lightMat,-0.62,0.76,2.2,0,0,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.24,0.1,0.1),lightMat,0.62,0.76,2.2,0,0,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.3,0.12,0.1),tailMat,-0.62,0.7,-2.2,0,0,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.3,0.12,0.1),tailMat,0.62,0.7,-2.2,0,0,0,false,shellGroup);
+    const muscleWheelPivots=addWheelSet(0.4,0.4,[
+      [-1.0,0.4,1.5,true],
+      [1.0,0.4,1.5,true],
+      [-1.0,0.4,-1.45,false],
+      [1.0,0.4,-1.45,false]
+    ]);
+
+    const mechBody=new THREE.MeshLambertMaterial({color:0x3b3b40});
+    const mechArmor=new THREE.MeshLambertMaterial({color:selected.color});
+    const mechTrim=new THREE.MeshLambertMaterial({color:0x202428});
+    const mechGlow=new THREE.MeshLambertMaterial({color:0xff954f});
+
+    const torso=addPart(new THREE.BoxGeometry(1.36,1.52,0.92),mechBody,0,1.75,0.08,0,0,0,true,robotGroup);
+    addPart(new THREE.BoxGeometry(1.22,0.26,0.24),mechGlow,0,1.9,0.52,0,0,0,false,robotGroup);
+    addPart(new THREE.BoxGeometry(1.02,0.26,0.6),mechArmor,0,2.26,0.08,0,0,0,true,robotGroup);
+    const head=addPart(new THREE.BoxGeometry(0.52,0.46,0.5),mechTrim,0,2.68,0.12,0,0,0,true,robotGroup);
+    addPart(new THREE.BoxGeometry(0.32,0.1,0.08),mechGlow,0,2.7,0.37,0,0,0,false,robotGroup);
+    addPart(new THREE.BoxGeometry(0.98,0.42,0.28),mechArmor,0,1.05,0.02,0,0,0,true,robotGroup);
+
+    const leftShoulder=addPart(new THREE.BoxGeometry(0.5,0.34,0.7),mechArmor,-0.92,2.08,0.06,0,0,0,true,robotGroup);
+    const rightShoulder=addPart(new THREE.BoxGeometry(0.5,0.34,0.7),mechArmor,0.92,2.08,0.06,0,0,0,true,robotGroup);
+
+    const leftArm=new THREE.Group();
+    leftArm.position.set(-0.98,1.9,0.06);
+    robotGroup.add(leftArm);
+    addPart(new THREE.BoxGeometry(0.4,1.05,0.42),mechBody,0,-0.54,0,0,0,0,true,leftArm);
+    addPart(new THREE.BoxGeometry(0.34,0.9,0.34),mechTrim,0,-1.4,0,0,0,0,true,leftArm);
+    addPart(new THREE.BoxGeometry(0.36,0.18,0.5),mechArmor,0,-1.95,0.04,0,0,0,true,leftArm);
+
+    const rightArm=new THREE.Group();
+    rightArm.position.set(0.98,1.9,0.06);
+    robotGroup.add(rightArm);
+    addPart(new THREE.BoxGeometry(0.4,1.05,0.42),mechBody,0,-0.54,0,0,0,0,true,rightArm);
+    addPart(new THREE.BoxGeometry(0.34,0.9,0.34),mechTrim,0,-1.4,0,0,0,0,true,rightArm);
+    addPart(new THREE.BoxGeometry(0.36,0.18,0.5),mechArmor,0,-1.95,0.04,0,0,0,true,rightArm);
+
+    const leftLeg=new THREE.Group();
+    leftLeg.position.set(-0.42,1.08,0.0);
+    robotGroup.add(leftLeg);
+    addPart(new THREE.BoxGeometry(0.42,1.12,0.44),mechBody,0,-0.56,0,0,0,0,true,leftLeg);
+    addPart(new THREE.BoxGeometry(0.38,1.02,0.38),mechTrim,0,-1.48,0,0,0,0,true,leftLeg);
+    addPart(new THREE.BoxGeometry(0.46,0.2,0.7),mechArmor,0,-2.12,0.12,0,0,0,true,leftLeg);
+
+    const rightLeg=new THREE.Group();
+    rightLeg.position.set(0.42,1.08,0.0);
+    robotGroup.add(rightLeg);
+    addPart(new THREE.BoxGeometry(0.42,1.12,0.44),mechBody,0,-0.56,0,0,0,0,true,rightLeg);
+    addPart(new THREE.BoxGeometry(0.38,1.02,0.38),mechTrim,0,-1.48,0,0,0,0,true,rightLeg);
+    addPart(new THREE.BoxGeometry(0.46,0.2,0.7),mechArmor,0,-2.12,0.12,0,0,0,true,rightLeg);
+
+    const backStack=addPart(new THREE.BoxGeometry(0.78,0.64,0.48),mechTrim,0,2.0,-0.45,0,0,0,true,robotGroup);
+    addPart(new THREE.BoxGeometry(0.2,0.16,0.2),mechGlow,-0.22,1.97,-0.75,0,0,0,false,robotGroup);
+    addPart(new THREE.BoxGeometry(0.2,0.16,0.2),mechGlow,0.22,1.97,-0.75,0,0,0,false,robotGroup);
+
+    muscleRobotRig={
+      shellGroup,
+      robotGroup,
+      torso,
+      head,
+      leftShoulder,
+      rightShoulder,
+      leftArm,
+      rightArm,
+      leftLeg,
+      rightLeg,
+      backStack,
+      wheelPivots:muscleWheelPivots,
+      wheelCarPos:[
+        new THREE.Vector3(-1.0,0.4,1.5),
+        new THREE.Vector3(1.0,0.4,1.5),
+        new THREE.Vector3(-1.0,0.4,-1.45),
+        new THREE.Vector3(1.0,0.4,-1.45)
+      ],
+      wheelRobotPos:[
+        new THREE.Vector3(-0.95,2.02,-0.12),
+        new THREE.Vector3(0.95,2.02,-0.12),
+        new THREE.Vector3(-0.45,0.72,0.1),
+        new THREE.Vector3(0.45,0.72,0.1)
+      ]
+    };
+  }else if(modelId==="super"){
+    const shellGroup=new THREE.Group();
+    group.add(shellGroup);
+    const robotGroup=new THREE.Group();
+    robotGroup.visible=false;
+    robotGroup.scale.setScalar(0.001);
+    group.add(robotGroup);
+
+    const superBodyMat=new THREE.MeshPhongMaterial({color:selected.color,shininess:95,specular:0x606060});
+    const superDarkMat=new THREE.MeshPhongMaterial({color:0x171b22,shininess:45,specular:0x2a2a2a});
+    const superGlassMat=new THREE.MeshPhongMaterial({color:0x1e2633,transparent:true,opacity:0.6,shininess:90,specular:0x7f8fa6});
+
+    addPart(new THREE.BoxGeometry(2.0,0.3,4.35),superBodyMat,0,0.48,0,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.66,0.12,1.24),superBodyMat,0,0.6,1.9,-0.22,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.26,0.32,1.5),superDarkMat,0,0.84,0.05,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.08,0.22,1.3),superGlassMat,0,0.86,0.08,0,0,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.18,0.22,1.6),superDarkMat,-0.9,0.62,0.22,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.18,0.22,1.6),superDarkMat,0.9,0.62,0.22,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.52,0.12,1.02),superDarkMat,0,0.76,-1.14,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.22,0.08,0.38),superDarkMat,0,0.96,-2.08,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.26,0.08,0.1),lightMat,-0.66,0.58,2.14,0,0,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.26,0.08,0.1),lightMat,0.66,0.58,2.14,0,0,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.28,0.08,0.1),tailMat,-0.66,0.63,-2.14,0,0,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.28,0.08,0.1),tailMat,0.66,0.63,-2.14,0,0,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(1.46,0.08,0.28),superDarkMat,0,0.94,-2.26,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.1,0.24,0.12),superDarkMat,-0.62,1.02,-2.2,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.1,0.24,0.12),superDarkMat,0.62,1.02,-2.2,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.42,0.08,0.22),superBodyMat,0,1.14,-2.24,0,0,0,true,shellGroup);
+    const superWheelPivots=addWheelSet(0.39,0.36,[
+      [-1.0,0.39,1.52,true],
+      [1.0,0.39,1.52,true],
+      [-1.0,0.39,-1.42,false],
+      [1.0,0.39,-1.42,false]
+    ]);
+
+    const neoArmor=new THREE.MeshLambertMaterial({color:selected.color});
+    const neoBody=new THREE.MeshLambertMaterial({color:0x2c2f36});
+    const neoTrim=new THREE.MeshLambertMaterial({color:0x171a1f});
+    const neoGlow=new THREE.MeshLambertMaterial({color:0x7de6ff});
+
+    const torso=addPart(new THREE.BoxGeometry(1.08,1.34,0.78),neoBody,0,1.72,0.1,0,0,0,true,robotGroup);
+    addPart(new THREE.BoxGeometry(0.98,0.28,0.2),neoGlow,0,1.95,0.46,0,0,0,false,robotGroup);
+    addPart(new THREE.BoxGeometry(0.84,0.34,0.58),neoArmor,0,2.24,0.12,0,0,0,true,robotGroup);
+    const head=addPart(new THREE.BoxGeometry(0.44,0.4,0.44),neoTrim,0,2.64,0.14,0,0,0,true,robotGroup);
+    addPart(new THREE.BoxGeometry(0.28,0.08,0.08),neoGlow,0,2.66,0.36,0,0,0,false,robotGroup);
+
+    const leftWing=new THREE.Group();
+    leftWing.position.set(-0.72,2.08,-0.14);
+    robotGroup.add(leftWing);
+    addPart(new THREE.BoxGeometry(0.72,0.08,0.26),neoArmor,-0.36,0,0,0,0,0,true,leftWing);
+    addPart(new THREE.BoxGeometry(0.36,0.06,0.2),neoGlow,-0.84,0.01,0,0,0,0,false,leftWing);
+
+    const rightWing=new THREE.Group();
+    rightWing.position.set(0.72,2.08,-0.14);
+    robotGroup.add(rightWing);
+    addPart(new THREE.BoxGeometry(0.72,0.08,0.26),neoArmor,0.36,0,0,0,0,0,true,rightWing);
+    addPart(new THREE.BoxGeometry(0.36,0.06,0.2),neoGlow,0.84,0.01,0,0,0,0,false,rightWing);
+
+    const leftArm=new THREE.Group();
+    leftArm.position.set(-0.84,1.98,0.08);
+    robotGroup.add(leftArm);
+    addPart(new THREE.BoxGeometry(0.34,0.94,0.34),neoBody,0,-0.46,0,0,0,0,true,leftArm);
+    addPart(new THREE.BoxGeometry(0.28,0.86,0.28),neoTrim,0,-1.2,0,0,0,0,true,leftArm);
+
+    const rightArm=new THREE.Group();
+    rightArm.position.set(0.84,1.98,0.08);
+    robotGroup.add(rightArm);
+    addPart(new THREE.BoxGeometry(0.34,0.94,0.34),neoBody,0,-0.46,0,0,0,0,true,rightArm);
+    addPart(new THREE.BoxGeometry(0.28,0.86,0.28),neoTrim,0,-1.2,0,0,0,0,true,rightArm);
+
+    const leftLeg=new THREE.Group();
+    leftLeg.position.set(-0.32,1.08,0.02);
+    robotGroup.add(leftLeg);
+    addPart(new THREE.BoxGeometry(0.36,1.0,0.38),neoBody,0,-0.5,0,0,0,0,true,leftLeg);
+    addPart(new THREE.BoxGeometry(0.32,0.96,0.32),neoTrim,0,-1.34,0,0,0,0,true,leftLeg);
+    addPart(new THREE.BoxGeometry(0.42,0.16,0.56),neoArmor,0,-1.92,0.08,0,0,0,true,leftLeg);
+
+    const rightLeg=new THREE.Group();
+    rightLeg.position.set(0.32,1.08,0.02);
+    robotGroup.add(rightLeg);
+    addPart(new THREE.BoxGeometry(0.36,1.0,0.38),neoBody,0,-0.5,0,0,0,0,true,rightLeg);
+    addPart(new THREE.BoxGeometry(0.32,0.96,0.32),neoTrim,0,-1.34,0,0,0,0,true,rightLeg);
+    addPart(new THREE.BoxGeometry(0.42,0.16,0.56),neoArmor,0,-1.92,0.08,0,0,0,true,rightLeg);
+
+    const thrusterLeft=addPart(new THREE.CylinderGeometry(0.12,0.14,0.42,10),neoTrim,-0.24,1.9,-0.62,Math.PI/2,0,0,true,robotGroup);
+    const thrusterRight=addPart(new THREE.CylinderGeometry(0.12,0.14,0.42,10),neoTrim,0.24,1.9,-0.62,Math.PI/2,0,0,true,robotGroup);
+    addPart(new THREE.BoxGeometry(0.62,0.26,0.26),neoBody,0,1.9,-0.48,0,0,0,true,robotGroup);
+
+    const flameOuterMat=new THREE.MeshBasicMaterial({color:0xff7a1a,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false});
+    const flameInnerMat=new THREE.MeshBasicMaterial({color:0xfff4aa,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false});
+    const flameLeftOuter=addPart(new THREE.ConeGeometry(0.13,0.62,12),flameOuterMat,-0.24,1.9,-0.95,-Math.PI/2,0,0,false,robotGroup);
+    const flameLeftInner=addPart(new THREE.ConeGeometry(0.08,0.42,10),flameInnerMat,-0.24,1.9,-0.92,-Math.PI/2,0,0,false,robotGroup);
+    const flameRightOuter=addPart(new THREE.ConeGeometry(0.13,0.62,12),flameOuterMat,0.24,1.9,-0.95,-Math.PI/2,0,0,false,robotGroup);
+    const flameRightInner=addPart(new THREE.ConeGeometry(0.08,0.42,10),flameInnerMat,0.24,1.9,-0.92,-Math.PI/2,0,0,false,robotGroup);
+    flameLeftOuter.visible=false;
+    flameLeftInner.visible=false;
+    flameRightOuter.visible=false;
+    flameRightInner.visible=false;
+
+    superRobotRig={
+      shellGroup,
+      robotGroup,
+      torso,
+      head,
+      leftWing,
+      rightWing,
+      leftArm,
+      rightArm,
+      leftLeg,
+      rightLeg,
+      thrusterLeft,
+      thrusterRight,
+      flames:[flameLeftOuter,flameLeftInner,flameRightOuter,flameRightInner],
+      flameOuterMat,
+      flameInnerMat,
+      wheelPivots:superWheelPivots,
+      wheelCarPos:[
+        new THREE.Vector3(-1.0,0.39,1.52),
+        new THREE.Vector3(1.0,0.39,1.52),
+        new THREE.Vector3(-1.0,0.39,-1.42),
+        new THREE.Vector3(1.0,0.39,-1.42)
+      ],
+      wheelRobotPos:[
+        new THREE.Vector3(-0.86,2.02,-0.14),
+        new THREE.Vector3(0.86,2.02,-0.14),
+        new THREE.Vector3(-0.34,0.74,0.06),
+        new THREE.Vector3(0.34,0.74,0.06)
+      ]
+    };
+  }else{
+    addPart(new THREE.BoxGeometry(2.15,0.26,4.55),bodyMat,0,0.46,0);
+    addPart(new THREE.BoxGeometry(1.1,0.32,1.45),trimMat,0,0.8,0.16);
+    addPart(new THREE.BoxGeometry(0.94,0.21,1.25),glassMat,0,0.82,0.18,0,0,0,false);
+    addPart(new THREE.BoxGeometry(1.92,0.05,0.55),darkMat,0,0.37,2.24);
+    addPart(new THREE.BoxGeometry(0.22,0.24,2.4),trimMat,-0.9,0.52,-0.42);
+    addPart(new THREE.BoxGeometry(0.22,0.24,2.4),trimMat,0.9,0.52,-0.42);
+    addPart(new THREE.BoxGeometry(0.08,0.3,1.45),darkMat,0,0.96,-0.45);
+    addPart(new THREE.BoxGeometry(1.62,0.08,0.42),darkMat,0,0.98,-2.16);
+    addPart(new THREE.BoxGeometry(0.08,0.24,0.08),darkMat,-0.52,0.86,-2.1);
+    addPart(new THREE.BoxGeometry(0.08,0.24,0.08),darkMat,0.52,0.86,-2.1);
+    addPart(new THREE.BoxGeometry(1.5,0.12,0.75),darkMat,0,0.5,-1.86);
+    addLights(0.55,2.22,0.58,-2.23,0.68,0.24,0.07,0.3,0.08);
+    addWheelSet(0.41,0.38,[
+      [-1.04,0.41,1.62,true],
+      [1.04,0.41,1.62,true],
+      [-1.04,0.41,-1.52,false],
+      [1.04,0.41,-1.52,false]
+    ]);
   }
 
   scene.add(group);
   playerCarGroup=group;
   playerBodyMat=bodyMat;
+  playerCarGroup.visible=cameraMode!=="first";
 }
 
 function setCameraMode(mode){
-  cameraMode=mode==="third"?"third":"first";
+  cameraMode=(mode==="third"||mode==="front")?mode:"first";
   if(cockpitRoot) cockpitRoot.visible=cameraMode==="first";
-  if(playerCarGroup) playerCarGroup.visible=cameraMode==="third";
+  if(playerCarGroup) playerCarGroup.visible=cameraMode!=="first";
   document.getElementById("camera-toggle-btn").textContent=
-    cameraMode==="first"?"View: 1st Person":"View: 3rd Person";
+    cameraMode==="first"?"View: 1st Person":cameraMode==="third"?"View: 3rd Person":"View: Front";
+  document.getElementById("front-view-btn").textContent=
+    cameraMode==="front"?"Front View: On":"Front View";
 }
 
 function toggleCameraMode(){
   setCameraMode(cameraMode==="first"?"third":"first");
 }
 
+function toggleFrontView(){
+  setCameraMode(cameraMode==="front"?"third":"front");
+}
+
 function updateCarPhysics(dt){
   const throttle=(keys.forward?1:0)-(keys.back?1:0);
-  const steer=(keys.right?1:0)-(keys.left?1:0);
+  const steer=(keys.left?1:0)-(keys.right?1:0);
+  const isFlying=robotFlightEnabled && !!getActiveRobotModelId();
   car.accelInput=lerp(car.accelInput,throttle,dt*7);
   car.steerInput=lerp(car.steerInput,steer,dt*10);
+  const prevX=car.position.x;
+  const prevZ=car.position.z;
 
   if(car.accelInput>0.05){
     const accel=car.speed<0?car.BRAKE:car.ACCEL;
@@ -723,22 +1282,228 @@ function updateCarPhysics(dt){
 
   const forwardX=Math.sin(car.heading);
   const forwardZ=Math.cos(car.heading);
-  car.position.x+=forwardX*car.speed*dt;
-  car.position.z+=forwardZ*car.speed*dt;
-  car.position.x=clamp(car.position.x,-980,980);
-  car.position.z=clamp(car.position.z,-980,980);
+  const nextX=car.position.x+forwardX*car.speed*dt;
+  const nextZ=car.position.z+forwardZ*car.speed*dt;
+  car.position.x=clamp(nextX,-WORLD_EDGE,WORLD_EDGE);
+  car.position.z=clamp(nextZ,-WORLD_EDGE,WORLD_EDGE);
+
+  if(isFlying){
+    const liftInput=(keys.ascend?1:0)-(keys.descend?1:0);
+    const targetVertical=liftInput*ROBOT_FLIGHT_LIFT_SPEED;
+    robotVerticalSpeed=lerp(robotVerticalSpeed,targetVertical,dt*6);
+    car.position.y=clamp(car.position.y+robotVerticalSpeed*dt,0,ROBOT_FLIGHT_MAX_ALT);
+    if(car.position.y===0 && robotVerticalSpeed<0){
+      robotVerticalSpeed=0;
+    }
+    return;
+  }
+
+  robotVerticalSpeed=lerp(robotVerticalSpeed,0,dt*6);
+  if(car.position.y>0.001){
+    car.position.y=Math.max(0,car.position.y-(16+Math.abs(robotVerticalSpeed))*dt);
+  }else{
+    car.position.y=0;
+  }
+
+  const nearGround=car.position.y<1.2;
+  if(nearGround && (car.position.x!==nextX || car.position.z!==nextZ)){
+    triggerCrash(prevX,prevZ);
+  }
+  if(nearGround && findCrashColliderAt(car.position.x,car.position.z)){
+    triggerCrash(prevX,prevZ);
+  }
+}
+
+function updateSportRobotTransform(dt){
+  if(!sportRobotRig) return;
+  const delta=sportRobotTarget-sportRobotProgress;
+  const step=dt*2.7;
+  if(Math.abs(delta)<=step) sportRobotProgress=sportRobotTarget;
+  else sportRobotProgress+=Math.sign(delta)*step;
+
+  const t=sportRobotProgress;
+  const eased=t*t*(3-2*t);
+
+  sportRobotRig.shellGroup.visible=eased<0.995;
+  sportRobotRig.shellGroup.position.y=0.32*eased;
+  sportRobotRig.shellGroup.scale.set(
+    1,
+    Math.max(0.22,1-0.76*eased),
+    Math.max(0.58,1-0.42*eased)
+  );
+
+  sportRobotRig.robotGroup.visible=eased>0.01;
+  sportRobotRig.robotGroup.position.y=0.2+0.58*eased;
+  const robotScale=Math.max(0.001,eased);
+  sportRobotRig.robotGroup.scale.set(robotScale,robotScale,robotScale);
+
+  sportRobotRig.leftArm.rotation.z=-1.2*eased;
+  sportRobotRig.rightArm.rotation.z=1.2*eased;
+  sportRobotRig.leftArm.rotation.x=0.16*eased;
+  sportRobotRig.rightArm.rotation.x=0.16*eased;
+  sportRobotRig.leftLeg.rotation.x=-0.15*eased;
+  sportRobotRig.rightLeg.rotation.x=-0.15*eased;
+  sportRobotRig.torso.rotation.y=Math.sin(performance.now()*0.0035)*0.03*eased;
+  sportRobotRig.head.rotation.y=Math.sin(performance.now()*0.0048)*0.08*eased;
+  const wingFlap=Math.sin(performance.now()*0.012)*0.08*eased;
+  sportRobotRig.leftWing.rotation.y=-0.62*eased+wingFlap;
+  sportRobotRig.rightWing.rotation.y=0.62*eased-wingFlap;
+  sportRobotRig.leftWing.rotation.z=0.18*eased;
+  sportRobotRig.rightWing.rotation.z=-0.18*eased;
+
+  for(let i=0;i<sportRobotRig.sportWheelPivots.length;i++){
+    const pivot=sportRobotRig.sportWheelPivots[i];
+    const from=sportRobotRig.wheelCarPos[i];
+    const to=sportRobotRig.wheelRobotPos[i];
+    pivot.position.set(
+      lerp(from.x,to.x,eased),
+      lerp(from.y,to.y,eased),
+      lerp(from.z,to.z,eased)
+    );
+  }
+}
+
+function updateMuscleRobotTransform(dt){
+  if(!muscleRobotRig) return;
+  const delta=muscleRobotTarget-muscleRobotProgress;
+  const step=dt*2.2;
+  if(Math.abs(delta)<=step) muscleRobotProgress=muscleRobotTarget;
+  else muscleRobotProgress+=Math.sign(delta)*step;
+
+  const t=muscleRobotProgress;
+  const eased=t*t*(3-2*t);
+
+  muscleRobotRig.shellGroup.visible=eased<0.995;
+  muscleRobotRig.shellGroup.position.y=0.28*eased;
+  muscleRobotRig.shellGroup.scale.set(
+    1,
+    Math.max(0.2,1-0.8*eased),
+    Math.max(0.56,1-0.44*eased)
+  );
+
+  muscleRobotRig.robotGroup.visible=eased>0.01;
+  muscleRobotRig.robotGroup.position.y=0.16+0.52*eased;
+  const robotScale=Math.max(0.001,eased);
+  muscleRobotRig.robotGroup.scale.set(robotScale,robotScale,robotScale);
+
+  muscleRobotRig.leftShoulder.rotation.z=-0.14*eased;
+  muscleRobotRig.rightShoulder.rotation.z=0.14*eased;
+  muscleRobotRig.leftArm.rotation.z=-0.55*eased;
+  muscleRobotRig.rightArm.rotation.z=0.55*eased;
+  muscleRobotRig.leftArm.rotation.x=-0.35*eased;
+  muscleRobotRig.rightArm.rotation.x=-0.35*eased;
+  muscleRobotRig.leftLeg.rotation.x=0.1*eased;
+  muscleRobotRig.rightLeg.rotation.x=0.1*eased;
+  muscleRobotRig.leftLeg.position.x=lerp(-0.42,-0.48,eased);
+  muscleRobotRig.rightLeg.position.x=lerp(0.42,0.48,eased);
+  muscleRobotRig.backStack.rotation.x=-0.18*eased;
+  muscleRobotRig.torso.rotation.y=Math.sin(performance.now()*0.0028)*0.02*eased;
+  muscleRobotRig.head.rotation.y=Math.sin(performance.now()*0.0041)*0.06*eased;
+
+  for(let i=0;i<muscleRobotRig.wheelPivots.length;i++){
+    const pivot=muscleRobotRig.wheelPivots[i];
+    const from=muscleRobotRig.wheelCarPos[i];
+    const to=muscleRobotRig.wheelRobotPos[i];
+    pivot.position.set(
+      lerp(from.x,to.x,eased),
+      lerp(from.y,to.y,eased),
+      lerp(from.z,to.z,eased)
+    );
+  }
+}
+
+function updateSuperRobotTransform(dt){
+  if(!superRobotRig) return;
+  const delta=superRobotTarget-superRobotProgress;
+  const step=dt*2.6;
+  if(Math.abs(delta)<=step) superRobotProgress=superRobotTarget;
+  else superRobotProgress+=Math.sign(delta)*step;
+
+  const t=superRobotProgress;
+  const eased=t*t*(3-2*t);
+
+  superRobotRig.shellGroup.visible=eased<0.995;
+  superRobotRig.shellGroup.position.y=0.34*eased;
+  superRobotRig.shellGroup.scale.set(
+    1,
+    Math.max(0.18,1-0.82*eased),
+    Math.max(0.54,1-0.46*eased)
+  );
+
+  superRobotRig.robotGroup.visible=eased>0.01;
+  superRobotRig.robotGroup.position.y=0.22+0.62*eased;
+  const robotScale=Math.max(0.001,eased);
+  superRobotRig.robotGroup.scale.set(robotScale,robotScale,robotScale);
+
+  superRobotRig.leftArm.rotation.z=-0.8*eased;
+  superRobotRig.rightArm.rotation.z=0.8*eased;
+  superRobotRig.leftArm.rotation.x=0.18*eased;
+  superRobotRig.rightArm.rotation.x=0.18*eased;
+  superRobotRig.leftLeg.rotation.x=-0.08*eased;
+  superRobotRig.rightLeg.rotation.x=-0.08*eased;
+  const wingSweep=0.78*eased;
+  superRobotRig.leftWing.rotation.y=-wingSweep;
+  superRobotRig.rightWing.rotation.y=wingSweep;
+  superRobotRig.leftWing.rotation.z=0.22*eased;
+  superRobotRig.rightWing.rotation.z=-0.22*eased;
+  superRobotRig.torso.rotation.y=Math.sin(performance.now()*0.0032)*0.03*eased;
+  superRobotRig.head.rotation.y=Math.sin(performance.now()*0.0052)*0.1*eased;
+  superRobotRig.thrusterLeft.rotation.z=0.06*eased;
+  superRobotRig.thrusterRight.rotation.z=-0.06*eased;
+
+  for(let i=0;i<superRobotRig.wheelPivots.length;i++){
+    const pivot=superRobotRig.wheelPivots[i];
+    const from=superRobotRig.wheelCarPos[i];
+    const to=superRobotRig.wheelRobotPos[i];
+    pivot.position.set(
+      lerp(from.x,to.x,eased),
+      lerp(from.y,to.y,eased),
+      lerp(from.z,to.z,eased)
+    );
+  }
+
+  const superFlying=robotFlightEnabled && getActiveRobotModelId()==="super";
+  const flameBoost=(keys.ascend?0.45:0)+(keys.forward?0.18:0);
+  const flamePulse=0.62+0.38*Math.sin(performance.now()*0.06);
+  const flameStrength=superFlying?(0.68+flamePulse*0.62+flameBoost):0;
+  superRobotRig.flameOuterMat.opacity=clamp(flameStrength*0.72,0,0.95);
+  superRobotRig.flameInnerMat.opacity=clamp(flameStrength*0.88,0,0.98);
+  for(let i=0;i<superRobotRig.flames.length;i++){
+    const flame=superRobotRig.flames[i];
+    const inner=i%2===1;
+    flame.visible=superFlying && eased>0.72;
+    const len=(inner?0.55:0.92)*flameStrength;
+    flame.scale.set(1,len,1);
+  }
 }
 
 function updatePlayerCarVisual(dt){
   if(!playerCarGroup) return;
-  playerCarGroup.position.set(car.position.x,0,car.position.z);
+  playerCarGroup.position.set(car.position.x,car.position.y,car.position.z);
   playerCarGroup.rotation.y=car.heading;
 
-  const steerYaw=car.steerInput*0.4;
+  updateSportRobotTransform(dt);
+  updateMuscleRobotTransform(dt);
+  updateSuperRobotTransform(dt);
+  if(robotFlightEnabled && !getActiveRobotModelId()){
+    robotFlightEnabled=false;
+    robotVerticalSpeed=0;
+    updateFlightButton();
+  }
+  const robotFactor=Math.max(
+    sportRobotRig?sportRobotProgress:0,
+    muscleRobotRig?muscleRobotProgress:0,
+    superRobotRig?superRobotProgress:0
+  );
+  updateFlightButton();
+  const flightTilt=robotFlightEnabled?(-car.accelInput*0.18):0;
+  playerCarGroup.rotation.x=lerp(playerCarGroup.rotation.x,flightTilt,dt*7);
+
+  const steerYaw=car.steerInput*0.4*(1-robotFactor*0.85);
   for(const pivot of playerFrontPivots){
     pivot.rotation.y=steerYaw;
   }
-  const roll=car.speed*dt*1.4;
+  const roll=car.speed*dt*1.4*(1-robotFactor*0.85);
   for(const wheel of playerWheelMeshes){
     wheel.rotation.x+=roll;
   }
@@ -752,7 +1517,7 @@ function updateFirstPersonCamera(dt){
   const sinH=Math.sin(car.heading);
   const ex=car.position.x+sinH*0.3+cosH*0.28;
   const ez=car.position.z+cosH*0.3-sinH*0.28;
-  camera.position.set(ex,1.22+bob,ez);
+  camera.position.set(ex,car.position.y+1.22+bob,ez);
   camera.rotation.y=car.heading+Math.PI;
   camera.rotation.x=0;
   camera.rotation.z=car.steerInput*0.018*(Math.abs(car.speed)/Math.max(car.MAX_SPEED,1));
@@ -763,12 +1528,26 @@ function updateThirdPersonCamera(dt){
   const forwardZ=Math.cos(car.heading);
   const desiredX=car.position.x-forwardX*7.6;
   const desiredZ=car.position.z-forwardZ*7.6;
-  const desiredY=3.0;
+  const desiredY=car.position.y+3.0;
   const smooth=1-Math.exp(-dt*7);
   chaseCamPos.lerp(new THREE.Vector3(desiredX,desiredY,desiredZ),smooth);
   camera.position.copy(chaseCamPos);
-  chaseLook.set(car.position.x+forwardX*7.0,1.1,car.position.z+forwardZ*7.0);
+  chaseLook.set(car.position.x+forwardX*7.0,car.position.y+1.1,car.position.z+forwardZ*7.0);
   camera.lookAt(chaseLook);
+  camera.rotation.z=0;
+}
+
+function updateFrontCamera(dt){
+  const forwardX=Math.sin(car.heading);
+  const forwardZ=Math.cos(car.heading);
+  const desiredX=car.position.x+forwardX*6.4;
+  const desiredZ=car.position.z+forwardZ*6.4;
+  const desiredY=car.position.y+2.25;
+  const smooth=1-Math.exp(-dt*7);
+  frontCamPos.lerp(new THREE.Vector3(desiredX,desiredY,desiredZ),smooth);
+  camera.position.copy(frontCamPos);
+  frontLook.set(car.position.x+forwardX*0.85,car.position.y+1.0,car.position.z+forwardZ*0.85);
+  camera.lookAt(frontLook);
   camera.rotation.z=0;
 }
 
@@ -879,11 +1658,32 @@ window.addEventListener("keydown",e=>{
     return;
   }
 
+  if(e.code==="KeyR"){
+    if(!e.repeat) toggleRobotTransform();
+    e.preventDefault();
+    return;
+  }
+  if(e.code==="KeyF"){
+    if(!e.repeat) toggleRobotFlight();
+    e.preventDefault();
+    return;
+  }
+
   if(e.code==="KeyW"||e.code==="ArrowUp"){keys.forward=true;startGame();e.preventDefault();}
   if(e.code==="KeyS"||e.code==="ArrowDown"){keys.back=true;startGame();e.preventDefault();}
   if(e.code==="KeyA"||e.code==="ArrowLeft"){keys.left=true;e.preventDefault();}
   if(e.code==="KeyD"||e.code==="ArrowRight"){keys.right=true;e.preventDefault();}
-  if(e.code==="Space"){startGame();e.preventDefault();}
+  if(e.code==="Space"){
+    if(robotFlightEnabled && getActiveRobotModelId()){
+      keys.ascend=true;
+    }
+    startGame();
+    e.preventDefault();
+  }
+  if((e.code==="ShiftLeft"||e.code==="ShiftRight") && robotFlightEnabled && getActiveRobotModelId()){
+    keys.descend=true;
+    e.preventDefault();
+  }
 });
 
 window.addEventListener("keyup",e=>{
@@ -891,10 +1691,15 @@ window.addEventListener("keyup",e=>{
   if(e.code==="KeyS"||e.code==="ArrowDown") keys.back=false;
   if(e.code==="KeyA"||e.code==="ArrowLeft") keys.left=false;
   if(e.code==="KeyD"||e.code==="ArrowRight") keys.right=false;
+  if(e.code==="Space") keys.ascend=false;
+  if(e.code==="ShiftLeft"||e.code==="ShiftRight") keys.descend=false;
 });
 
 document.getElementById("start-btn").addEventListener("click",startGame);
 document.getElementById("camera-toggle-btn").addEventListener("click",toggleCameraMode);
+document.getElementById("front-view-btn").addEventListener("click",toggleFrontView);
+document.getElementById("transform-btn").addEventListener("click",toggleRobotTransform);
+document.getElementById("flight-btn").addEventListener("click",toggleRobotFlight);
 document.getElementById("garage-btn").addEventListener("click",toggleGarage);
 document.getElementById("garage-close-btn").addEventListener("click",closeGarage);
 document.getElementById("garage-modal").addEventListener("click",e=>{
@@ -902,7 +1707,9 @@ document.getElementById("garage-modal").addEventListener("click",e=>{
 });
 
 function applyDistanceEarnings(dt){
-  money+=Math.abs(car.speed)*dt*0.30;
+  if(Math.abs(car.speed)>0.5){
+    money+=dt*(2000/30);
+  }
 }
 
 let lastTime=null;
@@ -923,9 +1730,12 @@ function loop(ts){
       saveProgress();
     }
   }
+  updateCrashEffects(dt);
 
   if(cameraMode==="first"){
     updateFirstPersonCamera(dt);
+  }else if(cameraMode==="front"){
+    updateFrontCamera(dt);
   }else{
     updateThirdPersonCamera(dt);
   }
@@ -935,7 +1745,6 @@ function loop(ts){
 }
 
 loadProgress();
-buildPlayerCar();
 applySelectedCarStats();
 setCameraMode("first");
 updatePlayerCarVisual(0);
