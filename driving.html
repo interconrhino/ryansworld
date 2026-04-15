@@ -581,6 +581,9 @@ let muscleRobotProgress=0;
 let superRobotRig=null;
 let superRobotTarget=0;
 let superRobotProgress=0;
+let hyperRobotRig=null;
+let hyperRobotTarget=0;
+let hyperRobotProgress=0;
 let robotFlightEnabled=false;
 let robotVerticalSpeed=0;
 const ROBOT_FLIGHT_MAX_ALT=140;
@@ -677,7 +680,7 @@ function updateTransformButton(){
   const btn=document.getElementById("transform-btn");
   if(!btn) return;
   const modelId=getSelectedCarDef().id;
-  const canTransform=modelId==="sport"||modelId==="muscle"||modelId==="super";
+  const canTransform=modelId==="sport"||modelId==="muscle"||modelId==="super"||modelId==="hyper";
   btn.disabled=!canTransform;
   btn.style.opacity=canTransform?"1":"0.45";
   if(!canTransform){
@@ -687,7 +690,8 @@ function updateTransformButton(){
   const target=
     modelId==="sport"?sportRobotTarget:
     modelId==="muscle"?muscleRobotTarget:
-    superRobotTarget;
+    modelId==="super"?superRobotTarget:
+    hyperRobotTarget;
   btn.textContent=target>0.5?"Transform: Robot":"Transform: Car";
 }
 
@@ -695,6 +699,7 @@ function getActiveRobotModelId(){
   if(getSelectedCarDef().id==="sport" && sportRobotProgress>0.55) return "sport";
   if(getSelectedCarDef().id==="muscle" && muscleRobotProgress>0.55) return "muscle";
   if(getSelectedCarDef().id==="super" && superRobotProgress>0.55) return "super";
+  if(getSelectedCarDef().id==="hyper" && hyperRobotProgress>0.55) return "hyper";
   return "";
 }
 
@@ -702,7 +707,7 @@ function updateFlightButton(){
   const btn=document.getElementById("flight-btn");
   if(!btn) return;
   const modelId=getSelectedCarDef().id;
-  const canEverFly=modelId==="sport"||modelId==="muscle"||modelId==="super";
+  const canEverFly=modelId==="sport"||modelId==="muscle"||modelId==="super"||modelId==="hyper";
   const isRobotActive=!!getActiveRobotModelId();
   const canFlyNow=canEverFly && isRobotActive;
   btn.disabled=!canFlyNow;
@@ -729,6 +734,9 @@ function toggleRobotTransform(){
   }else if(modelId==="super"){
     if(!superRobotRig) return;
     superRobotTarget=superRobotTarget>0.5?0:1;
+  }else if(modelId==="hyper"){
+    if(!hyperRobotRig) return;
+    hyperRobotTarget=hyperRobotTarget>0.5?0:1;
   }else{
     return;
   }
@@ -780,6 +788,9 @@ function buildPlayerCar(){
   superRobotRig=null;
   superRobotTarget=0;
   superRobotProgress=0;
+  hyperRobotRig=null;
+  hyperRobotTarget=0;
+  hyperRobotProgress=0;
   robotFlightEnabled=false;
   robotVerticalSpeed=0;
 
@@ -1205,6 +1216,157 @@ function buildPlayerCar(){
         new THREE.Vector3(0.34,0.74,0.06)
       ]
     };
+  }else if(modelId==="hyper"){
+    const shellGroup=new THREE.Group();
+    group.add(shellGroup);
+    const robotGroup=new THREE.Group();
+    robotGroup.visible=false;
+    robotGroup.scale.setScalar(0.001);
+    group.add(robotGroup);
+
+    const hyperBodyMat=new THREE.MeshPhongMaterial({color:selected.color,shininess:120,specular:0x8a6b08});
+    const hyperDarkMat=new THREE.MeshPhongMaterial({color:0x12161b,shininess:55,specular:0x303030});
+    const hyperGlassMat=new THREE.MeshPhongMaterial({color:0x182431,transparent:true,opacity:0.58,shininess:100,specular:0x9ab7c8});
+    const hyperGlowMat=new THREE.MeshBasicMaterial({color:0x9efcff});
+
+    addPart(new THREE.BoxGeometry(2.18,0.24,4.82),hyperBodyMat,0,0.44,0,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.7,0.12,1.4),hyperBodyMat,0,0.56,1.78,-0.2,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.22,0.28,1.68),hyperDarkMat,0,0.78,0.34,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.98,0.2,1.4),hyperGlassMat,0,0.82,0.4,0,0,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(2.04,0.06,0.62),hyperDarkMat,0,0.33,2.34,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.64,0.1,0.86),hyperDarkMat,0,0.46,-1.92,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(1.5,0.08,0.3),hyperBodyMat,0,1.04,-2.28,0,0,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.2,0.22,2.42),hyperDarkMat,-0.94,0.46,-0.1,0,0.08,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.2,0.22,2.42),hyperDarkMat,0.94,0.46,-0.1,0,-0.08,0,true,shellGroup);
+    addPart(new THREE.BoxGeometry(0.26,0.06,0.12),lightMat,-0.7,0.54,2.38,0,-0.2,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.26,0.06,0.12),lightMat,0.7,0.54,2.38,0,0.2,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.32,0.08,0.12),tailMat,-0.74,0.62,-2.34,0,0.16,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.32,0.08,0.12),tailMat,0.74,0.62,-2.34,0,-0.16,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.12,0.1,1.58),hyperGlowMat,-0.48,0.5,0.72,0,0,0,false,shellGroup);
+    addPart(new THREE.BoxGeometry(0.12,0.1,1.58),hyperGlowMat,0.48,0.5,0.72,0,0,0,false,shellGroup);
+    const hyperWheelPivots=addWheelSet(0.42,0.36,[
+      [-1.02,0.42,1.72,true],
+      [1.02,0.42,1.72,true],
+      [-1.02,0.42,-1.56,false],
+      [1.02,0.42,-1.56,false]
+    ],30);
+
+    const hyperArmor=new THREE.MeshLambertMaterial({color:selected.color});
+    const hyperCore=new THREE.MeshLambertMaterial({color:0x232a32});
+    const hyperTrim=new THREE.MeshLambertMaterial({color:0x101317});
+    const hyperAccent=new THREE.MeshLambertMaterial({color:0xaaf8ff});
+    const hyperEnergyOuterMat=new THREE.MeshBasicMaterial({color:0x31cfff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false});
+    const hyperEnergyInnerMat=new THREE.MeshBasicMaterial({color:0xfff7bd,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false});
+
+    const torso=addPart(new THREE.BoxGeometry(1.22,1.52,0.9),hyperCore,0,1.88,0.06,0,0,0,true,robotGroup);
+    addPart(new THREE.BoxGeometry(1.08,0.32,0.24),hyperAccent,0,2.1,0.54,0,0,0,false,robotGroup);
+    addPart(new THREE.BoxGeometry(0.9,0.42,0.62),hyperArmor,0,2.46,0.1,0,0,0,true,robotGroup);
+    const head=addPart(new THREE.BoxGeometry(0.5,0.44,0.48),hyperTrim,0,2.92,0.16,0,0,0,true,robotGroup);
+    addPart(new THREE.BoxGeometry(0.32,0.08,0.1),hyperAccent,0,2.96,0.38,0,0,0,false,robotGroup);
+    const crest=addPart(new THREE.ConeGeometry(0.16,0.46,4),hyperArmor,0,3.28,0.12,0,Math.PI/4,Math.PI,true,robotGroup);
+    addPart(new THREE.BoxGeometry(1.28,0.18,0.54),hyperArmor,0,1.28,0.1,0,0,0,true,robotGroup);
+
+    const leftShoulderBlade=new THREE.Group();
+    leftShoulderBlade.position.set(-0.92,2.24,-0.08);
+    robotGroup.add(leftShoulderBlade);
+    addPart(new THREE.BoxGeometry(0.72,0.14,0.24),hyperArmor,-0.34,0,0,0,0.22,0.2,true,leftShoulderBlade);
+    addPart(new THREE.BoxGeometry(0.42,0.06,0.12),hyperAccent,-0.82,0.01,0,0,0,0,false,leftShoulderBlade);
+
+    const rightShoulderBlade=new THREE.Group();
+    rightShoulderBlade.position.set(0.92,2.24,-0.08);
+    robotGroup.add(rightShoulderBlade);
+    addPart(new THREE.BoxGeometry(0.72,0.14,0.24),hyperArmor,0.34,0,0,0,-0.22,-0.2,true,rightShoulderBlade);
+    addPart(new THREE.BoxGeometry(0.42,0.06,0.12),hyperAccent,0.82,0.01,0,0,0,0,false,rightShoulderBlade);
+
+    const leftArm=new THREE.Group();
+    leftArm.position.set(-0.92,2.02,0.04);
+    robotGroup.add(leftArm);
+    addPart(new THREE.BoxGeometry(0.34,1.02,0.34),hyperCore,0,-0.52,0,0,0,0,true,leftArm);
+    addPart(new THREE.BoxGeometry(0.28,0.9,0.28),hyperTrim,0,-1.34,0,0,0,0,true,leftArm);
+    addPart(new THREE.BoxGeometry(0.26,0.3,0.52),hyperArmor,0,-1.88,0.1,0,0,0,true,leftArm);
+
+    const rightArm=new THREE.Group();
+    rightArm.position.set(0.92,2.02,0.04);
+    robotGroup.add(rightArm);
+    addPart(new THREE.BoxGeometry(0.34,1.02,0.34),hyperCore,0,-0.52,0,0,0,0,true,rightArm);
+    addPart(new THREE.BoxGeometry(0.28,0.9,0.28),hyperTrim,0,-1.34,0,0,0,0,true,rightArm);
+    addPart(new THREE.BoxGeometry(0.26,0.3,0.52),hyperArmor,0,-1.88,0.1,0,0,0,true,rightArm);
+
+    const leftLeg=new THREE.Group();
+    leftLeg.position.set(-0.36,1.2,0.02);
+    robotGroup.add(leftLeg);
+    addPart(new THREE.BoxGeometry(0.38,1.16,0.4),hyperCore,0,-0.58,0,0,0,0,true,leftLeg);
+    addPart(new THREE.BoxGeometry(0.32,1.06,0.34),hyperTrim,0,-1.54,0,0,0,0,true,leftLeg);
+    addPart(new THREE.BoxGeometry(0.48,0.18,0.74),hyperArmor,0,-2.2,0.16,0,0,0,true,leftLeg);
+
+    const rightLeg=new THREE.Group();
+    rightLeg.position.set(0.36,1.2,0.02);
+    robotGroup.add(rightLeg);
+    addPart(new THREE.BoxGeometry(0.38,1.16,0.4),hyperCore,0,-0.58,0,0,0,0,true,rightLeg);
+    addPart(new THREE.BoxGeometry(0.32,1.06,0.34),hyperTrim,0,-1.54,0,0,0,0,true,rightLeg);
+    addPart(new THREE.BoxGeometry(0.48,0.18,0.74),hyperArmor,0,-2.2,0.16,0,0,0,true,rightLeg);
+
+    const leftWing=new THREE.Group();
+    leftWing.position.set(-0.72,2.1,-0.24);
+    robotGroup.add(leftWing);
+    addPart(new THREE.BoxGeometry(0.98,0.08,0.28),hyperArmor,-0.5,0,0,0,0.18,0.22,true,leftWing);
+    addPart(new THREE.BoxGeometry(0.62,0.05,0.2),hyperAccent,-1.14,0.01,0,0,0,0,false,leftWing);
+    addPart(new THREE.BoxGeometry(0.36,0.03,0.12),hyperAccent,-1.6,0.01,0,0,0,0,false,leftWing);
+
+    const rightWing=new THREE.Group();
+    rightWing.position.set(0.72,2.1,-0.24);
+    robotGroup.add(rightWing);
+    addPart(new THREE.BoxGeometry(0.98,0.08,0.28),hyperArmor,0.5,0,0,0,-0.18,-0.22,true,rightWing);
+    addPart(new THREE.BoxGeometry(0.62,0.05,0.2),hyperAccent,1.14,0.01,0,0,0,0,false,rightWing);
+    addPart(new THREE.BoxGeometry(0.36,0.03,0.12),hyperAccent,1.6,0.01,0,0,0,0,false,rightWing);
+
+    const backFin=addPart(new THREE.BoxGeometry(0.84,0.58,0.3),hyperTrim,0,2.16,-0.5,0,0,0,true,robotGroup);
+    const thrusterLeft=addPart(new THREE.CylinderGeometry(0.14,0.16,0.5,12),hyperTrim,-0.28,2.02,-0.82,Math.PI/2,0,0,true,robotGroup);
+    const thrusterRight=addPart(new THREE.CylinderGeometry(0.14,0.16,0.5,12),hyperTrim,0.28,2.02,-0.82,Math.PI/2,0,0,true,robotGroup);
+    addPart(new THREE.BoxGeometry(0.7,0.2,0.28),hyperCore,0,2.02,-0.62,0,0,0,true,robotGroup);
+    const energyLeftOuter=addPart(new THREE.ConeGeometry(0.16,0.88,14),hyperEnergyOuterMat,-0.28,2.02,-1.26,-Math.PI/2,0,0,false,robotGroup);
+    const energyLeftInner=addPart(new THREE.ConeGeometry(0.09,0.62,12),hyperEnergyInnerMat,-0.28,2.02,-1.18,-Math.PI/2,0,0,false,robotGroup);
+    const energyRightOuter=addPart(new THREE.ConeGeometry(0.16,0.88,14),hyperEnergyOuterMat,0.28,2.02,-1.26,-Math.PI/2,0,0,false,robotGroup);
+    const energyRightInner=addPart(new THREE.ConeGeometry(0.09,0.62,12),hyperEnergyInnerMat,0.28,2.02,-1.18,-Math.PI/2,0,0,false,robotGroup);
+    energyLeftOuter.visible=false;
+    energyLeftInner.visible=false;
+    energyRightOuter.visible=false;
+    energyRightInner.visible=false;
+
+    hyperRobotRig={
+      shellGroup,
+      robotGroup,
+      torso,
+      head,
+      crest,
+      leftShoulderBlade,
+      rightShoulderBlade,
+      leftArm,
+      rightArm,
+      leftLeg,
+      rightLeg,
+      leftWing,
+      rightWing,
+      backFin,
+      thrusterLeft,
+      thrusterRight,
+      energyBursts:[energyLeftOuter,energyLeftInner,energyRightOuter,energyRightInner],
+      hyperEnergyOuterMat,
+      hyperEnergyInnerMat,
+      wheelPivots:hyperWheelPivots,
+      wheelCarPos:[
+        new THREE.Vector3(-1.02,0.42,1.72),
+        new THREE.Vector3(1.02,0.42,1.72),
+        new THREE.Vector3(-1.02,0.42,-1.56),
+        new THREE.Vector3(1.02,0.42,-1.56)
+      ],
+      wheelRobotPos:[
+        new THREE.Vector3(-1.04,2.14,-0.1),
+        new THREE.Vector3(1.04,2.14,-0.1),
+        new THREE.Vector3(-0.42,0.84,0.08),
+        new THREE.Vector3(0.42,0.84,0.08)
+      ]
+    };
   }else{
     addPart(new THREE.BoxGeometry(2.15,0.26,4.55),bodyMat,0,0.46,0);
     addPart(new THREE.BoxGeometry(1.1,0.32,1.45),trimMat,0,0.8,0.16);
@@ -1477,6 +1639,77 @@ function updateSuperRobotTransform(dt){
   }
 }
 
+function updateHyperRobotTransform(dt){
+  if(!hyperRobotRig) return;
+  const delta=hyperRobotTarget-hyperRobotProgress;
+  const step=dt*2.9;
+  if(Math.abs(delta)<=step) hyperRobotProgress=hyperRobotTarget;
+  else hyperRobotProgress+=Math.sign(delta)*step;
+
+  const t=hyperRobotProgress;
+  const eased=t*t*(3-2*t);
+
+  hyperRobotRig.shellGroup.visible=eased<0.995;
+  hyperRobotRig.shellGroup.position.y=0.42*eased;
+  hyperRobotRig.shellGroup.scale.set(
+    1,
+    Math.max(0.14,1-0.86*eased),
+    Math.max(0.48,1-0.52*eased)
+  );
+
+  hyperRobotRig.robotGroup.visible=eased>0.01;
+  hyperRobotRig.robotGroup.position.y=0.26+0.72*eased;
+  const robotScale=Math.max(0.001,eased);
+  hyperRobotRig.robotGroup.scale.set(robotScale,robotScale,robotScale);
+
+  hyperRobotRig.leftShoulderBlade.rotation.z=-0.26*eased;
+  hyperRobotRig.rightShoulderBlade.rotation.z=0.26*eased;
+  hyperRobotRig.leftArm.rotation.z=-0.96*eased;
+  hyperRobotRig.rightArm.rotation.z=0.96*eased;
+  hyperRobotRig.leftArm.rotation.x=0.24*eased;
+  hyperRobotRig.rightArm.rotation.x=0.24*eased;
+  hyperRobotRig.leftLeg.rotation.x=-0.12*eased;
+  hyperRobotRig.rightLeg.rotation.x=-0.12*eased;
+  hyperRobotRig.leftLeg.position.x=lerp(-0.36,-0.44,eased);
+  hyperRobotRig.rightLeg.position.x=lerp(0.36,0.44,eased);
+  const wingPulse=Math.sin(performance.now()*0.01)*0.09*eased;
+  hyperRobotRig.leftWing.rotation.y=-0.98*eased+wingPulse;
+  hyperRobotRig.rightWing.rotation.y=0.98*eased-wingPulse;
+  hyperRobotRig.leftWing.rotation.z=0.3*eased;
+  hyperRobotRig.rightWing.rotation.z=-0.3*eased;
+  hyperRobotRig.backFin.rotation.x=-0.24*eased;
+  hyperRobotRig.crest.rotation.z=Math.PI+Math.sin(performance.now()*0.008)*0.08*eased;
+  hyperRobotRig.torso.rotation.y=Math.sin(performance.now()*0.0036)*0.04*eased;
+  hyperRobotRig.head.rotation.y=Math.sin(performance.now()*0.0058)*0.12*eased;
+  hyperRobotRig.thrusterLeft.rotation.z=0.1*eased;
+  hyperRobotRig.thrusterRight.rotation.z=-0.1*eased;
+
+  for(let i=0;i<hyperRobotRig.wheelPivots.length;i++){
+    const pivot=hyperRobotRig.wheelPivots[i];
+    const from=hyperRobotRig.wheelCarPos[i];
+    const to=hyperRobotRig.wheelRobotPos[i];
+    pivot.position.set(
+      lerp(from.x,to.x,eased),
+      lerp(from.y,to.y,eased),
+      lerp(from.z,to.z,eased)
+    );
+  }
+
+  const hyperFlying=robotFlightEnabled && getActiveRobotModelId()==="hyper";
+  const energyBoost=(keys.ascend?0.48:0)+(keys.forward?0.22:0)+(keys.descend?0.14:0);
+  const energyPulse=0.72+0.28*Math.sin(performance.now()*0.08);
+  const energyStrength=hyperFlying?(0.82+energyPulse*0.7+energyBoost):0;
+  hyperRobotRig.hyperEnergyOuterMat.opacity=clamp(energyStrength*0.68,0,0.98);
+  hyperRobotRig.hyperEnergyInnerMat.opacity=clamp(energyStrength*0.84,0,0.99);
+  for(let i=0;i<hyperRobotRig.energyBursts.length;i++){
+    const burst=hyperRobotRig.energyBursts[i];
+    const inner=i%2===1;
+    burst.visible=hyperFlying && eased>0.68;
+    const len=(inner?0.72:1.12)*energyStrength;
+    burst.scale.set(1,len,1);
+  }
+}
+
 function updatePlayerCarVisual(dt){
   if(!playerCarGroup) return;
   playerCarGroup.position.set(car.position.x,car.position.y,car.position.z);
@@ -1485,6 +1718,7 @@ function updatePlayerCarVisual(dt){
   updateSportRobotTransform(dt);
   updateMuscleRobotTransform(dt);
   updateSuperRobotTransform(dt);
+  updateHyperRobotTransform(dt);
   if(robotFlightEnabled && !getActiveRobotModelId()){
     robotFlightEnabled=false;
     robotVerticalSpeed=0;
@@ -1493,7 +1727,8 @@ function updatePlayerCarVisual(dt){
   const robotFactor=Math.max(
     sportRobotRig?sportRobotProgress:0,
     muscleRobotRig?muscleRobotProgress:0,
-    superRobotRig?superRobotProgress:0
+    superRobotRig?superRobotProgress:0,
+    hyperRobotRig?hyperRobotProgress:0
   );
   updateFlightButton();
   const flightTilt=robotFlightEnabled?(-car.accelInput*0.18):0;
